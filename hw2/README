@@ -1,0 +1,267 @@
+NAME : TARUN LOHANI
+ID : 110921666
+HOMEWORK - 2 :
+
+This submission contains following folder/files:
+
+1. hw2-tlohani/fs/trfs
+
+This folder contains the files related to Trace Filesystem(trfs).
+a) trfs.h
+This is the header file that contains function definitions, variable definitions, structures for trfs.
+b) file.c
+This file contain implementations for file operations like read, write, open, release etc.
+c) inode.c
+This file contain implementations for file/folder operations like create, rename, setattr, getattr etc.
+d) super.c
+This file contains implementations on super block.
+e) dentry.c
+This file contains revalidate and release functions of dentry.
+f) lookup.c
+This file contains dentry level functions like lookup and transpose etc. required to create link with the lower level filesystem.
+g) mmap.c
+This file contains functions required for memory mapping between trfs and lwer filesystem.
+h) main.c
+This is the starting point for trfs, contains logic for mounting and unmounting.
+i) Makefile
+This file contains all the command to build all the modules.
+j) install_module.sh
+Contains the commands to insert the new trfs.ko module to the linux kernel and remove the previous one if exists from the linux kernel, and also unmount previously trfs filesystem any mounted and mounts trfs.
+i) Kconfig
+Kconfig file of trfs with a short description about the trfs.
+
+2.  hw2-tlohani/hw2
+
+a) treplay.c
+This file contains the user level code to replay the events traced in the trfs.
+
+b) trctl.c
+File containg the user level code to access the ioctl commands for trfs.
+
+c) treplay.h
+File to store common structs and macros related to replay.
+
+d) trctl.h
+File to store IOCTL commands.
+
+e) kernel.config
+.config while used to build the kernel.
+
+f) README
+Contains details about the implementation and steps followed to achieve the results, details about how to run the program.
+
+
+
+3. hw2-tlohani/include/uapi/linux/magic.h
+Added unique magic number for trfs filesystem which is necessary for mounting.
+
+4. hw2-tlohani/Makefile
+Contains the commands to run(compile) the trfs code and generate module out of it.
+
+
+Details for Running :
+
+1. Use the kernel.config present at the location hw2-tlohani/hw2 to build the hw2-tlohani/ folder. (Copy kernel.config and paste it inside hw2-tlohani directory as .config. Run make command for an incremental build inside hw2-tlohani directory).
+
+2. Create a directory as "/mnt/trfs" with the following command -
+
+mkdir /mnt/trfs
+
+
+3. Create a "lower" directory using the following command -
+
+mkdir /usr/src/lower
+
+Create a bunch of files, folder, etc. and some content inside the "lower" directory.
+
+
+4. Make a copy of this lower directory using this command -
+
+cp -r /usr/src/lower /usr/src/replay
+
+
+5. Navigate to hw2-tlohani/fs/trfs and run this command -
+
+sh install_module.sh
+
+This needs to be run as ROOT user otherwise the script fails.(This script by default unmount previous trfs monuntpoint if any and mounts new trfs assumimg lower directory at "/usr/src/lower", moint point at "/mnt/trfs" and trace log file at "/tmp/tfile1.txt").
+
+Alternatively if you want to mount the filesystem over some other directory manually, follow the steps below -
+
+- Run "make clean" to remove the previous built modules and executables inside hw2-tlohani/fs/trfs directory. Run "make" to build the new executables and kernel modules. If make did not generate any warnings/errors then the modules, executables generated successfully.
+- Navigate to root and mount the trfs.
+command to mount  : mount -t trfs -o tfile=<trace file path> <lower directory path> /mnt/trfs
+ex : mount -t trfs -o tfile=/trace.txt /home/lower /mnt/trfs
+
+If any of the arguments are wrongly passed, mount will fail.
+
+6. Once the filesystem is mounted, content of the lower directory should be visible inside the mount point. After this user can do open, read, write, rename etc. operations inside the filesystem. All these operations will be traced in the trace file provided while mounting the filesystem (/tmp/tfile1 by default).
+
+Trfs supports following 12 calls to be traced -
+open, read, write, close, create, link, unlink, symlink, mkdir, rmdir, mknod and rename
+
+and by default traces all of these. If the user doesn't want to trace all of them, he can set it using user program trctl (discussed later).
+
+7. To replay the tasks performed by the user in /usr/src/replay directory, follow the steps below -
+
+- Navigate to hw2-tlohani/hw2/ directory.
+- Run make command here.
+- User can run the treplay function with following three options -
+
+	./treplay.o /tmp/tfile1.txt -
+	Display the details of records to be replayed (paths, permissions etc.), the system call to be replayed, then replay the syscall.  Finally, display the result of the syscall executing now compared to what the return value was originally.
+
+	./treplay.o -n /tmp/tfile1.txt -
+	Will just show the details of the traced records without replaying it.
+
+	./treplay.o -s /tmp/tfile1.txt -
+	Aborts te replay if there is any deviation between the result of the syscall executing now compared to what the return value was originally.
+
+If any of the above arguments are passed wrongly, the user program will throw an error and exit.
+
+8. To set which calls will be traced, user can program it using the trctl call. To use it, follow the steps below -
+
+- Navigate to hw2-tlohani/hw2/ directory and run make command here (if you haven't built it earlier).
+- User can invoke the trctl function with following three ways -
+
+	./trctl.o CMD /mnt/trfs/ -
+	This program issues an ioctl(2) to trfs to set the bitmap of which filesystem methods to trace.  CMD can be:
+
+	all: to enable tracing for all filesystem methods.
+	none: to disable tracing for all filesystem methods.
+	0xNN: hex number to pass bitmap of methods to trace or not. (Valid values of 0XNN discussed later in te details about the code)
+
+	./trctl.o /mnt/trfs/ -
+	This command will retrieve the current value of the bitmap and display it in hex.
+
+	./trctl.o <+/- call1> <+/- call2> ... <+/- calln> /mnt/trfs/ -
+	This command will on/off that particular call which the user has mentioned where + denotes enabling the trace for the call while - denotes disabling the trace for the call. More on this is described in the "Extra credit" section.
+
+If any of the above arguments are passed wrongly, the user program will throw an error and exit.
+
+DETAILS ABOUT THE CODE :
+
+1. KERNEL SPACE CODE(amfs) :
+
+a) When the filesystem is mounted, it invokes the trfs_mount() function of the main.c file. The mount path and device name information is extracted from the command line arguments and are stored in the superblock. Record id is set to 0 and the bitmap which tells which methods we will be tracing is set to default value 0Xfff. A truncated trace file is opened at the path specified by the user. If the user doesn't send any trace file path then we fail at this point and don't mount.
+
+b) Following structure is defined in the trfs.h as well as treplay.h which will be used to trace the details of all the records.
+
+struct trfs_trace_ds {
+    short path_len1;
+    short path_len2;
+    int write_len;
+    int record_id;
+    unsigned char record_type;
+    unsigned int open_flags;
+    unsigned short permission_mode;
+    int err;
+};
+
+The path_len1 stores the absolute path length of the current directory. Similarly path_len2 stores the absolute path length of the the second directory if required (like in rename, link etc.) otherwise is 0. write_len stores the length of the content to be written (only used in write system call). record_id is the unique record id assigned to each record and it value is stored in the superblock and kept incremented after every write. open_flags and permission_mode store modes and permissions if any required using the system call. err stores the return value of the trfs method. record_type is to determine which system call is being traced. It's values are defined in trfs.h as follows -
+
+#define OPEN_CALL 0
+#define READ_CALL 1
+#define WRITE_CALL 2
+#define RELEASE_CALL 3
+#define CREATE_CALL 4
+#define LINK_CALL 5
+#define UNLINK_CALL 6
+#define SYMLINK_CALL 7
+#define MKDIR_CALL 8
+#define RMDIR_CALL 9
+#define MKNOD_CALL 10
+#define RENAME_CALL 11
+
+c) Now, code is added in file.c and inode.c to trace the following functions -
+
+open, read, write, close, create, link, unlink, symlink, mkdir, rmdir, mknod and rename
+
+in their respective defenitions. A new instance of this structure is created and appropriate values are assigned to each structure element. This structure is then casted into a char * and written on the trace file. After writing the structure, the absolute path of the file1, file2 and write content (file2 and write content are valid for only some system calls) is also written on the trace file.
+The file paths are written separate from the structure as it makes the job of replaying these records easy because the size of our structure will not vary for different records. It will have a fixed size (28B to be precise). Hence we can cast the char * to the struct trfs_trace_ds while replaying the records without bothering about the size of the structure. After that, the values of  path_len1, path_len2 and write_len will help us to jump to next record and cast it again.
+Before writing any of the record, it is checked from the bitmap if user wants to trace that file. Other error checks are also done while writing.
+
+2. USER LAND CODE :
+
+a) treplay.c - To replay the records written on the trace file, the user has to invoke this program. The arguments passed are parsed and the program exits if arguments do not have appropriate values. Before replaying we check if the user wants to replay or only wants to see the details of the records traced.
+This program casts the char * objects from the start of the trace file as explained above. Then it reads path1, path2 and content values according to the path_len1, path_len2 and write_len values stored in the casted structure. Once we get the values, we check the record_type value. If the user only wants to see the details of the records, we print the record details according to the record_type. If the user replays we also call the respective userland function with appropriate parameters extracted from the trace file into our structure.
+After replay, the original returned value from the system call and our returned values are printed. If there is some deviation and the user wants to abort we abort te program, otherwise the replay continues till all the records have been read from the trace file.
+
+b) trctl.c - To set the value of the bitmap, which tells the kernel to trace only those methods which user wants, we are using IOCTL call to the kernel.
+Following 4 IOCTL values have been defined in the trctl.h (user program) and trfs.h (kernel program)
+
+#define MYDEV_MAGIC 'G'
+#define ALL  _IOW(MYDEV_MAGIC, 0, unsigned long)  // To set bitmap value to 0xfff.
+#define NONE  _IOW(MYDEV_MAGIC, 1, unsigned long) // To set bitmap value to 0x0.
+#define HEX  _IOW(MYDEV_MAGIC, 2, unsigned long)  // To set bitmap value as user input value.
+#define RET _IOR(MYDEV_MAGIC, 3, unsigned long *) // To retrieve the current bitmap value from filesystem.
+
+After validating the arguments that are passed by checking whether they are NULL or not we proceed to the appropriate IOCTL call.
+If the user has given some command (all, none, 0XNN or +/- call), we set the value of the bitmap accordingly and invoke the IOCTL call. This sets the bitmap value inside the suerblock of the trfs filesystem.
+
+0XNN - We are supporting tracing of 12 system calls in our trfs. Hence we are using a 12 bit bitmap value where each bit represents wether tracing of the corresponding method should be enabled (if bit at that position is set to 1) or disabled (if bit at that position is set to 0).
+
+Following is the bit position of each call -
+
+open - 0
+read - 1
+write - 2
+close - 3
+create - 4
+link - 5
+unlink - 6
+symlink - 7
+mkdir - 8
+rmdir - 9
+mknod - 10
+rename - 11.
+
+This means that if the user has given 0Xa19, it corresponds to 1010 0001 1001 in binary which means, user only wants to trace open, close, create, rmdir and rename methods.
+
+If the user has not given any command in the trctl call, it means we have to retrieve the current bitmap value from the kernel space to the user. Hence we invoke the fourth IOCTL call which reads the value from kernel space to user.
+
+EXTRA CREDITS :
+
+To enable or disable tracing of a method using above approach, the user need to calculate the binary value according to his need and convert it to hex value. This is not a user friendly way, hence we provide an extra option to the user. User can add or remove the function they want to enable or disable using the following values in the command.
+
+To enable -
+
+open    : +open
+read    : +read
+write   : +write
+close   : +close
+create  : +create
+link    : +link
+unlink  : +unlink
+symlink : +symlink
+mkdir   : +mkdir
+rmdir   : +rmdir
+mknod   : +mknod
+rename  : +rename
+
+To disable -
+
+open    : -open
+read    : -read
+write   : -write
+close   : -close
+create  : -create
+link    : -link
+unlink  : -unlink
+symlink : -symlink
+mkdir   : -mkdir
+rmdir   : -rmdir
+mknod   : -mknod
+rename  : -rename
+
+For implemeting this part, I have used a simple approach. When the user passes anyone of the above option, I am retrieving the current bitmap value and matching the input with defined values. If user wants to enable a function, I check its value in the current bitmap. If it is already enabled, no need to do anything, if it is disabled then enable that particular bit in the bitmap and set the bitmap in the kernel using ioctl call. Similarly, if the user wants to disable a function, I check its value in the current bitmap. If it is already disbled, no need to do anything, if it is enabled then disable that particular bit in the bitmap and set the bitmap in the kernel using ioctl call.
+
+
+LIMITATIONS :
+1. I am not using kernel thread to write or read the values. The program can be made more efficient using that.
+2. The filesystem only traces 12 methods while there are many other methods that could have been traced.
+
+
+REFERENCES :
+1. Free electrons to browse the code and check the implemntations.(http://lxr.free-electrons.com/source/)
+2. Copied entire fs/wrapfs and chnaged it to trfs to obtain base version.
