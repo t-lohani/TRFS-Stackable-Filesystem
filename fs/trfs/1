@@ -1,0 +1,8 @@
+config TR_FS
+	tristate "Wrapfs stackable file system (EXPERIMENTAL)"
+	help
+	  Trfs is a stackable file system which simply passes its
+	  operations to the lower layer.  It is designed as a useful
+	  template for developing or debugging other stackable file systems,
+	  and more. It maintains a trace file which keeps the logs of all the
+	  system calls that are being invoked by the user.
